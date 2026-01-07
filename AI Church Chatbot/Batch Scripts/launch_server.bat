@@ -39,10 +39,9 @@ venv\Scripts\python -m playwright install chromium
 :: 7. Launch FastAPI Server (The Brain)
 ECHO.
 ECHO ==============================================================
-ECHO [7] Launching FastAPI Server (Hope Bot Brain)...
+ECHO [7] Launching FastAPI Server (AI Church Chatbot)...
 ECHO -> Open http://127.0.0.1:8003/docs for the API test page.
-ECHO -> Open http://127.0.0.1:8003/ to chat with Hope!
-ECHO =CHO.
+ECHO -> Open http://127.0.0.1:8003/ to chat!
 ECHO ==============================================================
 ECHO.
 

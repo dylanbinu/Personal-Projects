@@ -17,7 +17,7 @@ def main():
     import shutil
     
     parser = argparse.ArgumentParser(description="Ingest Church Data")
-    parser.add_argument("--church_id", type=str, help="Unique ID for the church (e.g., 'heritage')")
+    parser.add_argument("--church_id", type=str, help="Unique ID for the church (e.g., 'my_church')")
     parser.add_argument("--input_file", type=str, default="scraped_data.jsonl", help="Input JSONL file")
     parser.add_argument("--reset", action="store_true", help="Wipe the entire database before ingesting")
     
@@ -41,6 +41,28 @@ def main():
         os.makedirs(CHROMA_PATH, exist_ok=True)
     else:
         print(f"   [INFO] Appending to existing database at {CHROMA_PATH}")
+        # PRE-CLEANUP: If we are appending for a specific church, we should delete OLD data for that church first
+        if args.church_id:
+            try:
+                print(f"   [INFO] Removing old data for church_id: {args.church_id}")
+                # We need to instantiate Chroma to delete
+                temp_db = Chroma(persist_directory=CHROMA_PATH, embedding_function=HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2"))
+                
+                # Get all IDs for this church
+                # This is expensive but necessary if we don't have a direct metadata delete API in this version of valid langchain wrapper
+                # Optimization: In real production, use a dedicated Vector DB server (Qdrant/Weaviate) that supports delete_by_filter
+                
+                # Retrieve all docs to find IDs (Slow for massive DBs, acceptable for local/small scale)
+                # Actually, Chroma has a `get` method
+                existing_docs = temp_db.get(where={"church_id": args.church_id})
+                if existing_docs and existing_docs['ids']:
+                    ids_to_delete = existing_docs['ids']
+                    print(f"   [INFO] Deleting {len(ids_to_delete)} existing chunks for this church...")
+                    temp_db.delete(ids=ids_to_delete)
+                else:
+                    print("   [INFO] No existing data found for this church.")
+            except Exception as e:
+                print(f"   [WARN] Could not clean up old data: {e}")
 
     # Determine Input File
     if os.path.isabs(args.input_file):

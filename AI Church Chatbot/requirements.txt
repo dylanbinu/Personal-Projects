@@ -32,3 +32,4 @@ trafilatura
 
 # Browser Automation
 playwright
+html2text

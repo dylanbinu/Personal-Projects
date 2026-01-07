@@ -1,81 +1,126 @@
-# 🤖 Universal Web RAG Chatbot (Smart Search Edition)
+# ⛪ AI Church Chatbot
 
-A powerful, local AI tool that allows you to "chat" with any website.
+> **A Universal, Multi-Tenant AI Assistant for Church Websites.**  
+> *Powered by RAG (Retrieval-Augmented Generation), FastAPI, and Web Components.*
 
-This tool scrapes a target website using **Async Playwright** (with stealth mode), converts the content into structured **Markdown**, ingests it into a local **Hybrid Database** (Vector + Keyword), and uses OpenAI to answer questions based strictly on that data via a polished Web Interface.
+![Status](https://img.shields.io/badge/Status-Active-success)
+![Python](https://img.shields.io/badge/Python-3.10+-blue)
+![Backend](https://img.shields.io/badge/Backend-FastAPI-green)
+![Frontend](https://img.shields.io/badge/Frontend-Web_Component-orange)
 
-## 🚀 Features
-* **Smart Hybrid Search:** Combines **Vector Search** (ChromaDB) for conceptual understanding with **BM25 Keyword Search** for exact matches (names, dates, IDs).
-* **Universal Async Scraper:** Uses an asynchronous headless browser to handle dynamic JavaScript-heavy sites (React, Angular) faster than standard scrapers.
-* **Markdown Storage:** Saves data as `.md` files to preserve website structure (headers, lists, links) for better AI comprehension.
-* **Web Interface:** A professional UI built with **Streamlit** features a sidebar for data management and a chat window with persistent memory.
-*   **Stealth Mode:** Automatically bypasses basic bot protections by mimicking human browser behavior.
-*   **Link Accuracy Guard:** Prevents the bot from inventing (hallucinating) false URLs.
-*   **Dynamic Visit Planning:** Automatically finds the correct "Plan Your Visit" or "Home" page for any church site without manual configuration.
-*   **Zero-Hallucination Mode:** Strictly enforces that all links provided in the chat actually exist in the website context.
+## 📖 Overview
 
----
+The **AI Church Chatbot** is a turnkey solution designed to be embedded on any church website. It ingests public website content (service times, ministries, events) and uses an LLM to answer visitor questions accurately, acting as a digital greeter 24/7.
 
-## 🛠️ Prerequisites
-
-1.  **Python 3.10+**: Ensure Python is installed and added to your system PATH.
-2.  **OpenAI API Key**: You need a valid API key.
-    *   Create a `.env` file in the project root.
-    *   Add `OPENAI_API_KEY=sk-proj-...` to it.
+**Key Features:**
+*   **🕷️ Smart Scraper**: Asynchronously crawls church websites, cleaning boilerplate to extract high-quality knowledge.
+*   **🧠 RAG Architecture**: Uses a local Vector Database (ChromaDB) to retrieve relevant context before answering.
+*   **🏢 Multi-Tenancy**: Support for multiple churches on a single server instance. Context is isolated by `church_id`.
+*   **🛡️ Hallucination Guard**: strict link validation ensures the bot never invents fake URLs.
+*   **🔌 Plug-and-Play Widget**: A single generic JavaScript file (`church_chatbot.js`) provides a beautiful, modern chat interface for any site.
 
 ---
 
-## ⚡ Quick Start (One-Click Setup)
+## 🚀 Quick Start
 
-We have provided a batch script to handle installation, updates, and factory resets automatically.
+### 1. Installation
 
-1.  Navigate to the `scripts/` folder.
-2.  Double-click **`setup.bat`**.
+Ensure you have **Python 3.10+** installed.
 
-**This script will:**
-1.  Check your Python installation.
-2.  Create (or repair) the virtual environment (`venv`).
-3.  Install all dependencies (AI libraries, Browsers, Search Engines).
-4.  **Automatically launch the Web Interface.**
+```bash
+# Clone the repository (if applicable)
+git clone ...
+
+# Install dependencies
+pip install -r requirements.txt
+```
+
+### 2. Configuration
+
+Create a `.env` file in the root directory with your OpenAI API key:
+
+```ini
+OPENAI_API_KEY=sk-proj-YOUR_KEY_HERE
+```
+
+### 3. Ingesting Church Data
+
+The chatbot needs to "learn" about a church before it can answer questions. Use the ingestion script with a unique `church_id`.
+
+**Example:**
+Scrape and ingest data for a generic example church (or your own).
+*Note: You must first run `webscrape.py` or provide a `jsonl` file. For this demo, we assume `scraped_data.jsonl` exists.*
+
+```bash
+cd code
+# "Clean" ingest (removes old data for this ID if it exists)
+python ingest.py --church_id my_church --input_file ../scraped_data.jsonl
+```
+
+### 4. Running the Server
+
+Start the FastAPI backend:
+
+```bash
+cd code
+python server.py
+```
+The server will start at `http://localhost:8004`.
 
 ---
 
-## 📖 How to Use
+## 💻 Frontend Integration
 
-### 1. Launch the App
-For daily use, you don't need to run setup again.
-* Double-click **`scripts/launch_app.bat`**.
-* This opens the chatbot in your default web browser.
+The chatbot is delivered as a **Custom Web Component** `<church-chatbot>`. This makes it framework-agnostic and easy to embed anywhere (WordPress, Squarespace, React, static HTML).
 
-### 2. Load a Website
-The app starts empty. To teach it a new website:
-1.  Open the **Sidebar** (left side of the app).
-2.  Paste a URL (e.g., `https://www.spacex.com/vehicles/starship/`).
-3.  Click **"Load Website Data"**.
-4.  Watch the status log as it scrapes, cleans, and indexes the data.
+### Basic Embed Code
 
-### 3. Chat
-Once the green "✅ Done!" message appears, simply type your question in the main chat box.
-* *Example:* "What is the payload capacity?"
-* *Example:* "How many engines does it have?"
+Add this to your website's footer:
+
+```html
+<!-- 1. Load the Script -->
+<script src="http://localhost:8004/church_chatbot.js" defer></script>
+
+<!-- 2. Sort the Component -->
+<church-chatbot 
+    api-url="http://localhost:8004/chat"
+    church-id="my_church"
+    title="Church Assistant"
+></church-chatbot>
+```
+
+### Component Attributes
+
+| Attribute | Description | Default |
+| :--- | :--- | :--- |
+| `api-url` | Full URL to the backend chat endpoint. | `http://localhost:8004/chat` |
+| `church-id` | **Required for multi-tenancy.** Matches the ID used during ingestion. | `null` |
+| `title` | The text displayed in the chat header. | `Church Assistant` |
+| `greeting` | The initial welcoming message. | *"Hi there!..."* |
+| `logo-svg` | (Advanced) Custom SVG XML to replace the default icon. | *Generic Church Icon* |
 
 ---
 
 ## 📂 Project Structure
 
 ```text
-Project Root/
-├── code/                   # PYTHON SOURCE CODE
-│   ├── app.py              # Main Application (UI & Brain)
-│   ├── webscrape.py        # Async Scraper (Stealth Mode)
-│   ├── ingest.py           # Hybrid Loader (Markdown -> Chroma/BM25)
-│   └── reset.py            # Database Cleaner
-│
-├── scripts/                # BATCH FILES (Run these)
-│   ├── setup.bat           # Installer & Factory Reset Tool
-│   └── launch_app.bat      # Daily Launcher (Starts Web UI)
-│
-├── venv/                   # Virtual Environment (Libraries)
-├── chroma_db/              # Local Vector Database (Auto-generated)
-├── scraped_data.md         # The raw structured text from the website
-└── requirements.txt        # List of dependencies
+├── code/
+│   ├── server.py           # FastAPI Backend & Static File Server
+│   ├── ingest.py           # Vector DB Ingestion Script
+│   ├── webscrape.py        # Web Crawler
+│   ├── retrieval.py        # RAG Logic & Context Retrieval
+│   ├── church_chatbot.js   # Frontend Web Component
+│   ├── widget_demo.html    # Local Demo Page
+│   ├── link_utils.py       # Helper for URL validation
+│   └── context_manager.py  # Helper for context loading
+├── chroma_db/              # Local Vector Database Storage
+├── churches.json           # Registry of configured churches
+└── requirements.txt        # Python Dependencies
+```
+
+## 🛠️ Development
+
+To test locally without embedding:
+1.  Run the server: `python code/server.py`
+2.  Open `http://localhost:8004` in your browser.
+3.  This loads `code/widget_demo.html`, which is pre-configured to talk to your local backend.
