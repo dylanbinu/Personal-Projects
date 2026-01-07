@@ -69,7 +69,7 @@ ECHO (Converting scraped data to vector embeddings...)
 ECHO.
 ECHO [2/2] Running Data Ingestion (ingest.py)...
 ECHO (Converting scraped data to vector embeddings...)
-venv\Scripts\python.exe code\ingest.py
+venv\Scripts\python.exe code\ingest.py --reset
 IF ERRORLEVEL 1 (
     ECHO.
     ECHO Ingest failed. See error messages above.
