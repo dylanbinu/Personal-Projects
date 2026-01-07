@@ -1,0 +1,34 @@
+# Core Application
+streamlit
+openai
+tiktoken
+nest_asyncio
+python-dotenv
+fastapi
+uvicorn[standard] # Tool to run the FastAPI server (includes required dependencies)
+pydantic # Required by FastAPI for data validation and modeling
+
+# AI & LangChain
+langchain
+langchain-chroma
+langchain-community
+langchain-core
+langchain-text-splitters
+langchain-openai
+langchain-huggingface
+
+# Database & Search
+chromadb
+rank_bm25
+
+# Processing & Parsing
+pypdf
+reportlab
+sentence-transformers
+beautifulsoup4
+markdownify
+requests
+trafilatura
+
+# Browser Automation
+playwright
