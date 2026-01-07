@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hope Chatbot (Web Component Demo)</title>
+    <!-- Importing the Web Component Script (v34 for cache busting) -->
+    <script src="hope-chatbot.js?v=v38" defer></script>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background-color: #f0f0f0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            color: #333;
+        }
+
+        .container {
+            text-align: center;
+            background: white;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            max-width: 600px;
+        }
+
+        h1 {
+            margin-bottom: 10px;
+        }
+
+        p {
+            color: #666;
+            line-height: 1.6;
+        }
+
+        code {
+            background: #eee;
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <h1>Church Website Demo</h1>
+        <p>This page represents a generic church website (WordPress, Squarespace, etc.).</p>
+        <p>The chatbot below is a self-contained <code>&lt;hope-chatbot&gt;</code> Web Component.</p>
+        <p>It is isolated from this page's styles (Shadow DOM) and logic.</p>
+    </div>
+
+    <!-- THE WIDGET -->
+    <!-- Note: api-url is optional if served from same origin, but good to be explicit -->
+    <hope-chatbot api-url="/chat" title="Hope">
+    </hope-chatbot>
+
+</body>
+
+</html>
