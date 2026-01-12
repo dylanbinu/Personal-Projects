@@ -1,32 +1,21 @@
 import os
 import json
 import re
-from dotenv import load_dotenv
-
-load_dotenv()
-
-from typing import List
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel
+from typing import List, Optional
+
 from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import HumanMessage, AIMessage
+
+# Local Modules
+import config
 from retrieval import retrieve_and_rank
-from typing import Optional
-
-# --- CONFIGURATION (Copied from app.py) ---
-if not os.environ.get("OPENAI_API_KEY"):
-    raise RuntimeError("OPENAI_API_KEY not found in environment. Please check your .env file.")
-
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.join(BASE_DIR, "..")
-CHROMA_PATH = os.path.join(PROJECT_ROOT, "chroma_db")
-CHURCHES_FILE = os.path.join(BASE_DIR, "churches.json")
-DEFAULT_DATA_FILE = os.path.join(PROJECT_ROOT, "scraped_data.jsonl")
-
 from context_manager import load_context_from_file
 from link_utils import validate_and_fix_links
 
@@ -34,51 +23,54 @@ from link_utils import validate_and_fix_links
 CHURCHES = {}
 CHURCH_CONTEXTS = {} # Map church_id -> {valid_urls: set, main_domain: str, context_keyword: str}
 
-if os.path.exists(CHURCHES_FILE):
-    with open(CHURCHES_FILE, "r") as f:
+if os.path.exists(config.CHURCHES_FILE):
+    with open(config.CHURCHES_FILE, "r") as f:
         CHURCHES = json.load(f)
     print(f"Loaded {len(CHURCHES)} churches from registry.")
 
 # Load Default (Legacy) Context
-DEFAULT_CONTEXT = load_context_from_file(DEFAULT_DATA_FILE)
+DEFAULT_CONTEXT = load_context_from_file(config.DEFAULT_DATA_FILE)
 if not DEFAULT_CONTEXT:
     DEFAULT_CONTEXT = {"valid_urls": set(), "main_domain": "https://google.com", "preferred_keyword": None}
 
-# Load Specific Church Contexts (if data files exist)
-# Expectation: scraped_data_{church_id}.jsonl
+# Load Specific Church Contexts
 for church_id in CHURCHES:
-    path = os.path.join(PROJECT_ROOT, f"scraped_data_{church_id}.jsonl")
+    path = os.path.join(config.PROJECT_ROOT, f"scraped_data_{church_id}.jsonl")
     ctx = load_context_from_file(path)
     if ctx:
         CHURCH_CONTEXTS[church_id] = ctx
         print(f"Loaded context for {church_id}")
-    else:
-        # Fallback to default if no specific file (Shared data model?)
-        # Or just don't load context.
-        pass
 
-# Initialize FastAPI App
+# --- GLOBAL MODEL INITIALIZATION (Optimization) ---
+print("--- Initializing AI Models & Database Connection... ---")
+embedding_model = HuggingFaceEmbeddings(model_name=config.EMBEDDING_MODEL_NAME)
+llm = ChatOpenAI(model_name=config.LLM_MODEL_NAME, temperature=config.LLM_TEMPERATURE)
+
+# Initialize ChromaDB Client Globally if DB exists
+vector_db = None
+if os.path.exists(config.CHROMA_PATH):
+    vector_db = Chroma(persist_directory=config.CHROMA_PATH, embedding_function=embedding_model)
+    print("--- Vector Database Connected ---")
+else:
+    print("--- WARNING: Vector Database not found. Run ingest.py first. ---")
+
+# --- FASTAPI APP ---
 app = FastAPI(title="Church Assistant API")
 
-# **CRITICAL:** Add CORS middleware to allow the widget (from another domain/port) to access this API.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # Allow all origins for local testing. RESTRICT this in production!
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# --- LOAD MODELS (No caching required in API) ---
-embedding_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2")
-llm = ChatOpenAI(model_name="gpt-4o-mini", temperature=0.3)
-
-# --- DATA MODELS (For API Input/Output) ---
+# --- DATA MODELS ---
 class ChatRequest(BaseModel):
     message: str
-    history: List[dict] = [] # List of {"role": "user/assistant", "content": "..."}
-    use_full_context: bool = False # Control the RAG mode from the frontend
-    church_id: Optional[str] = None # Support Multi-Tenancy
+    history: List[dict] = []
+    use_full_context: bool = False
+    church_id: Optional[str] = None
 
 class ChatResponse(BaseModel):
     response: str
@@ -95,23 +87,18 @@ async def chat(request: ChatRequest):
         context_data = CHURCH_CONTEXTS[church_id]
         print(f"--- Using Context for Church ID: {church_id} ---")
     else:
-        # If church_id provided but not found, maybe warn?
-        if church_id: print(f"--- Church ID {church_id} not found in loaded contexts, using default ---")
+        if church_id: print(f"--- Church ID {church_id} not found, using default ---")
         
     valid_urls = context_data["valid_urls"]
     main_domain = context_data["main_domain"]
     preferred_keyword = context_data.get("preferred_keyword")
 
     # 1. Database Check
-    if not os.path.exists(CHROMA_PATH):
+    if vector_db is None:
         raise HTTPException(status_code=503, detail="Database not ready. Run ingest.py first.")
 
-    vector_db = Chroma(persist_directory=CHROMA_PATH, embedding_function=embedding_model)
-    # OPTIMIZATION: Using MMR (Maximal Marginal Relevance) to fetch diverse results
-    # retriever creation moved to retrieval.py
-    
-    # Convert simple dict history to LangChain Messages
-    # OPTIMIZATION: Prune history to last 4 messages to prevent infinite token growth
+    # 2. Retrieve Relevant Context
+    # Prune history to last 4 messages
     recent_history = request.history[-4:] if len(request.history) > 4 else request.history
     
     langchain_history = [
@@ -119,33 +106,27 @@ async def chat(request: ChatRequest):
         for msg in recent_history
     ]
 
-    # 2. Retrieve Relevant Context (Hybrid Logic)
     final_docs = retrieve_and_rank(request.message, vector_db, valid_urls, preferred_keyword, church_id)
     
     # Construct Context Text
-    if request.use_full_context:
-        # Full context unsupported in multi-tenant for now/too expensive
-        context_text = ""
-    else:
-        context_text = "\n\n".join([f"[Source: {d.metadata.get('source', 'unknown')}]\n{d.page_content}" for d in final_docs])
-        # HARD CAP: Limit context to ~3.7k tokens (15,000 chars) to prevent cost blowouts
-        if len(context_text) > 15000:
-            context_text = context_text[:15000] + "...(truncated)"
+    context_text = "\n\n".join([f"[Source: {d.metadata.get('source', 'unknown')}]\n{d.page_content}" for d in final_docs])
+    # HARD CAP: Limit context
+    if len(context_text) > 15000:
+        context_text = context_text[:15000] + "...(truncated)"
 
-    # DYNAMIC CONTACT URL: Find the best "Contact" page for this specific church
-    contact_url = "https://google.com" # Ultimate fallback
+    # Dynamic Contact URL
+    contact_url = "https://google.com"
     if main_domain: contact_url = main_domain
-    
-    # Try to find a better one
     for u in valid_urls:
         if "/contact" in u or "/connect" in u:
             contact_url = u
             break
 
     if not context_text:
-        return ChatResponse(response=f"I apologize, that specific detail isn't available on our website right now. However, I can still get you connected! Please visit our [Contact Page]({contact_url}).", sources=[])
+        return ChatResponse(response=f"I apologize, that specific detail isn't available right now. Please visit our [Contact Page]({contact_url}).", sources=[])
 
     # 3. Generate Answer (Church Assistant Persona)
+    # SYSTEM PROMPT - UNTOUCHED FOR SAFETY
     prompt_template = ChatPromptTemplate.from_messages([
         ("system", """You are a warm, welcoming, and helpful digital greeter for a church website.
         
@@ -192,43 +173,35 @@ async def chat(request: ChatRequest):
             
     Context: {context}
     """),
-        *langchain_history, # Unpack the chat history
+        *langchain_history,
         ("human", "{question}")
     ])
     
     chain = prompt_template | llm
-    # Removed special_links argument as requested
     response = chain.invoke({"context": context_text, "question": request.message})
     
-    # 3.25 Inject Dynamic Contact URL
-    # Replace the placeholder with the actual contact URL found above (Robust Regex)
-    import re
-    # Match {{CONTACT_URL}}, {{ CONTACT_URL }}, or even %7BCONTACT_URL%7D (url encoded)
+    # Inject Dynamic Contact URL
     pattern = r'(?:\{+\s*CONTACT_URL\s*\}+|%7B\s*CONTACT_URL\s*%7D)'
     response.content = re.sub(pattern, contact_url, response.content, flags=re.IGNORECASE)
     
-    # 3.5 Validate Links (Deterministic Guarantee)
+    # Validate Links
     validated_content = validate_and_fix_links(response.content, valid_urls, contact_url, main_domain)
     
-    # 4. Extract Sources
+    # Extract Sources
     unique_sources = list(set([d.metadata.get('source', '') for d in final_docs]))
     
     return ChatResponse(response=validated_content, sources=unique_sources)
 
-from fastapi.responses import HTMLResponse, FileResponse
-
 @app.get("/church_chatbot.js", response_class=FileResponse)
 async def get_widget_js():
-    return os.path.join(BASE_DIR, "church_chatbot.js")
+    return os.path.join(config.BASE_DIR, "church_chatbot.js")
 
 @app.get("/", response_class=HTMLResponse)
 async def get_widget():
-    # Attempt to locate the widget file
-    widget_path = os.path.join(BASE_DIR, "widget_demo.html")
+    widget_path = os.path.join(config.BASE_DIR, "widget_demo.html")
     with open(widget_path, "r", encoding="utf-8") as f:
         return f.read()
 
 if __name__ == "__main__":
     import uvicorn
-    # 0.0.0.0 allows access from other devices on the network
     uvicorn.run(app, host="0.0.0.0", port=8004)

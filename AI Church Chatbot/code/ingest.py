@@ -7,15 +7,9 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.join(BASE_DIR, "..")
-CHROMA_PATH = os.path.join(PROJECT_ROOT, "chroma_db")
-DATA_FILE = os.path.join(PROJECT_ROOT, "scraped_data.jsonl")
+import config
 
 def main():
-    import argparse
-    import shutil
-    
     parser = argparse.ArgumentParser(description="Ingest Church Data")
     parser.add_argument("--church_id", type=str, help="Unique ID for the church (e.g., 'my_church')")
     parser.add_argument("--input_file", type=str, default="scraped_data.jsonl", help="Input JSONL file")
@@ -28,47 +22,51 @@ def main():
     
     # Handle DB Reset
     if args.reset:
-        if os.path.exists(CHROMA_PATH):
+        if os.path.exists(config.CHROMA_PATH):
             try:
-                shutil.rmtree(CHROMA_PATH)
-                print(f"   [RESET] Cleared existing database at {CHROMA_PATH}")
+                shutil.rmtree(config.CHROMA_PATH)
+                print(f"   [RESET] Cleared existing database at {config.CHROMA_PATH}")
             except PermissionError:
                 print(f"[ERROR] Could not clear DB. Server might be running.", file=sys.stderr)
                 sys.exit(1)
             except Exception as e:
                 print(f"[ERROR] {e}", file=sys.stderr)
                 sys.exit(1)
-        os.makedirs(CHROMA_PATH, exist_ok=True)
+        os.makedirs(config.CHROMA_PATH, exist_ok=True)
     else:
-        print(f"   [INFO] Appending to existing database at {CHROMA_PATH}")
-        # PRE-CLEANUP: If we are appending for a specific church, we should delete OLD data for that church first
-        if args.church_id:
-            try:
-                print(f"   [INFO] Removing old data for church_id: {args.church_id}")
-                # We need to instantiate Chroma to delete
-                temp_db = Chroma(persist_directory=CHROMA_PATH, embedding_function=HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2"))
-                
-                # Get all IDs for this church
-                # This is expensive but necessary if we don't have a direct metadata delete API in this version of valid langchain wrapper
-                # Optimization: In real production, use a dedicated Vector DB server (Qdrant/Weaviate) that supports delete_by_filter
-                
-                # Retrieve all docs to find IDs (Slow for massive DBs, acceptable for local/small scale)
-                # Actually, Chroma has a `get` method
-                existing_docs = temp_db.get(where={"church_id": args.church_id})
-                if existing_docs and existing_docs['ids']:
-                    ids_to_delete = existing_docs['ids']
-                    print(f"   [INFO] Deleting {len(ids_to_delete)} existing chunks for this church...")
-                    temp_db.delete(ids=ids_to_delete)
-                else:
-                    print("   [INFO] No existing data found for this church.")
-            except Exception as e:
-                print(f"   [WARN] Could not clean up old data: {e}")
+        print(f"   [INFO] Appending to existing database at {config.CHROMA_PATH}")
+        
+    # --- LOAD MODEL ONCE (Optimization) ---
+    print(f"   [INFO] Loading Embedding Model ({config.EMBEDDING_MODEL_NAME})...")
+    embedding_model = HuggingFaceEmbeddings(model_name=config.EMBEDDING_MODEL_NAME)
+
+    # PRE-CLEANUP: If we are appending for a specific church, we must delete OLD data
+    # Now we reuse the already loaded `embedding_model`
+    if not args.reset and args.church_id:
+        try:
+            print(f"   [INFO] Removing old data for church_id: {args.church_id}")
+            temp_db = Chroma(persist_directory=config.CHROMA_PATH, embedding_function=embedding_model)
+            
+            # Retrieve all docs to find IDs
+            existing_docs = temp_db.get(where={"church_id": args.church_id})
+            if existing_docs and existing_docs['ids']:
+                ids_to_delete = existing_docs['ids']
+                print(f"   [INFO] Deleting {len(ids_to_delete)} existing chunks for this church...")
+                temp_db.delete(ids=ids_to_delete)
+            else:
+                print("   [INFO] No existing data found for this church.")
+        except Exception as e:
+            print(f"   [WARN] Could not clean up old data: {e}")
 
     # Determine Input File
     if os.path.isabs(args.input_file):
         data_path = args.input_file
     else:
-        data_path = os.path.join(PROJECT_ROOT, args.input_file)
+        # Check current dir first, then project root fallback
+        if os.path.exists(args.input_file):
+            data_path = os.path.abspath(args.input_file)
+        else:
+            data_path = os.path.join(config.PROJECT_ROOT, args.input_file)
 
     if not os.path.exists(data_path):
         print(f"[ERROR] Data file not found: {data_path}", file=sys.stderr)
@@ -81,12 +79,16 @@ def main():
             if line.strip():
                 try:
                     data = json.loads(line)
-                    metadata = {"source": data["source"]}
+                    # Support both formats (source/url)
+                    src = data.get("source") or data.get("url")
+                    if not src: continue
+
+                    metadata = {"source": src}
                     if args.church_id:
                         metadata["church_id"] = args.church_id
                         
                     doc = Document(
-                        page_content=data["content"],
+                        page_content=data["content"] or data.get("text", ""),
                         metadata=metadata
                     )
                     documents.append(doc)
@@ -105,15 +107,7 @@ def main():
     print(f"   Created {len(chunks)} searchable chunks.")
 
     # 3. Vectorize
-    embedding_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2")
-    
-    # If Church ID is provided and NOT resetting, strictly we should delete old data for this church first
-    # to avoid duplication. 
-    # NOTE: Chroma basic client doesn't make delete-by-metadata easy without loading it first.
-    # For now, we assume the user manages this (or uses --reset for full rebuild).
-    # Ideally: vector_store.delete(filter={"church_id": args.church_id}) if possible.
-    
-    # Save to Disk
+    # Reuse the model loaded earlier
     BATCH_SIZE = 50
     for i in range(0, len(chunks), BATCH_SIZE):
         batch = chunks[i:i+BATCH_SIZE]

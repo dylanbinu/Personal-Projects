@@ -2,6 +2,8 @@ from typing import List, Set, Optional
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
 
+import config
+
 def retrieve_and_rank(
     query: str,
     vector_db: Chroma,
@@ -87,9 +89,6 @@ def retrieve_and_rank(
     candidates = list(unique_docs_map.values())
 
     # 4. Scoring / Re-Ranking
-    HIGH_VALUE_SUBSTRINGS = ["service", "location", "campus", "visit", "time", "about", "connect", "new", "give", "giving", "donate", "team", "staff", "who-we-are", "leadership", "youth", "kid", "child", "student", "christmas"]
-    LOW_VALUE_SUBSTRINGS = ["event", "pantry", "easter", "calendar", "blog", "news", "message", "sermon"]
-    
     scored_docs = []
     
     # Dynamic Campus Boosting: Check if user mentioned a specific campus
@@ -104,8 +103,8 @@ def retrieve_and_rank(
         source = doc.metadata.get("source", "").lower()
         score = 0
         
-        if any(sub in source for sub in HIGH_VALUE_SUBSTRINGS): score += 5
-        if any(sub in source for sub in LOW_VALUE_SUBSTRINGS): score -= 10
+        if any(sub in source for sub in config.HIGH_VALUE_SUBSTRINGS): score += 5
+        if any(sub in source for sub in config.LOW_VALUE_SUBSTRINGS): score -= 10
         
         # Context Boost
         if preferred_campus_keyword and preferred_campus_keyword in source:
