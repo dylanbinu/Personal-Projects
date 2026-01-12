@@ -1,3 +1,12 @@
+---
+title: Church Assistant
+emoji: ⛪
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+pinned: false
+---
+
 # ⛪ AI Church Chatbot
 
 > **A Universal, Multi-Tenant AI Assistant for Church Websites.**  

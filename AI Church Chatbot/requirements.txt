@@ -1,35 +1,12 @@
-# Core Application
-streamlit
-openai
-tiktoken
-nest_asyncio
-python-dotenv
 fastapi
-uvicorn[standard] # Tool to run the FastAPI server (includes required dependencies)
-pydantic # Required by FastAPI for data validation and modeling
-
-# AI & LangChain
-langchain
-langchain-chroma
-langchain-community
-langchain-core
-langchain-text-splitters
+uvicorn
+pydantic
+python-dotenv
 langchain-openai
+langchain-chroma
 langchain-huggingface
-
-# Database & Search
+langchain-core
 chromadb
-rank_bm25
-
-# Processing & Parsing
-pypdf
-reportlab
 sentence-transformers
-beautifulsoup4
-markdownify
 requests
-trafilatura
-
-# Browser Automation
-playwright
-html2text
+beautifulsoup4
