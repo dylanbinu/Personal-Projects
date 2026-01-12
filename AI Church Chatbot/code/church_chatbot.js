@@ -1,22 +1,70 @@
-
-const DEFAUT_LOGO = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 60%; height: 60%; color: white;"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/><path d="M12 7v6"/><path d="M9 10h6"/></svg>`;
+const DEFAULT_LOGO = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width: 60%; height: 60%; color: white;">
+  <circle cx="12" cy="12" r="10"/>
+  <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
+  <line x1="9" y1="9" x2="9.01" y2="9"/>
+  <line x1="15" y1="9" x2="15.01" y2="9"/>
+</svg>`;
 
 class ChurchChatbot extends HTMLElement {
     constructor() {
         super();
         this.attachShadow({ mode: 'open' });
         this.chatHistory = [];
-        this.apiUrl = this.getAttribute('api-url') || 'http://localhost:8004/chat';
+        this.apiUrl = this.getAttribute('api-url') || '/chat';
         this.chatbotTitle = this.getAttribute('title') || 'Church Assistant';
         this.churchId = this.getAttribute('church-id') || null; // Support Multi-Tenancy
-        this.greeting = this.getAttribute('greeting') || "Hi there! I'm your digital greeter! I am here to answer any questions you may have about our church and help you get connected. How can I help you?";
-        this.logoContent = this.getAttribute('logo-svg') || DEFAUT_LOGO;
+        this.greeting = this.getAttribute('greeting') || "Hello! 👋 I'm so glad you're here. I'm your digital assistant, ready to help you find service times, get connected, or answer any questions about our church family. How can I help you today?";
+        this.logoContent = this.getAttribute('logo-svg') || DEFAULT_LOGO;
     }
 
     connectedCallback() {
         this.injectDependencies();
         this.render();
+        this.cacheDomElements(); // Optimization: Cache once
         this.setupEventListeners();
+    }
+
+    cacheDomElements() {
+        this.toggleBtn = this.shadowRoot.getElementById('chat-toggle');
+        this.closeBtn = this.shadowRoot.getElementById('chat-close-btn');
+        this.chatWindow = this.shadowRoot.getElementById('chat-window');
+        this.sendBtn = this.shadowRoot.getElementById('send-btn');
+        this.inputField = this.shadowRoot.getElementById('user-input'); // Correct ID
+        this.chipsContainer = this.shadowRoot.getElementById('initial-chips');
+        this.historyDiv = this.shadowRoot.getElementById('chat-history');
+    }
+
+    setupEventListeners() {
+        // Toggle Logic
+        const toggle = () => this.toggleChat();
+        this.toggleBtn.addEventListener('click', toggle);
+        this.closeBtn.addEventListener('click', toggle);
+
+        // Send Logic
+        this.sendBtn.addEventListener('click', () => this.sendMessage());
+        this.inputField.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') this.sendMessage();
+        });
+
+        // Chips
+        this.chipsContainer.addEventListener('click', (e) => {
+            const btn = e.target.closest('.chip');
+            if (btn) this.sendPreset(btn.getAttribute('data-msg'));
+        });
+
+        // GLOBAL CLICK INTERCEPTOR (Fix for "Refused to connect")
+        // This catches ALL link clicks inside the shadow DOM and forces them to new tab.
+        this.shadowRoot.addEventListener('click', (e) => {
+            const link = e.target.closest('a');
+            if (link) {
+                const href = link.getAttribute('href');
+                if (href && (href.startsWith('http') || href.startsWith('//'))) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    window.open(href, '_blank', 'noopener,noreferrer');
+                }
+            }
+        });
     }
 
     injectDependencies() {
@@ -250,56 +298,156 @@ class ChurchChatbot extends HTMLElement {
             .bot-msg strong { font-weight: 600; color: #111827; /* Gray 900 */ }
 
             /* Source Footer */
+            /* Source Footer - Premium Look */
             .sources-footer {
-                margin-top: 10px;
-                padding-top: 10px;
-                border-top: 1px dashed #d1d5db;
+                margin-top: 16px;
+                border-top: 1px solid #f3f4f6;
                 font-size: 11px;
-                color: var(--text-muted);
+                color: #9ca3af;
                 display: flex;
                 align-items: center;
-                gap: 5px;
-                overflow: hidden; /* Ensure container doesn't spill */
+                gap: 6px;
+                background: #f9fafb; /* Slight contrast */
+                margin-left: -18px; /* Bleed to edges */
+                margin-right: -18px;
+                margin-bottom: -14px; /* Fill bottom */
+                padding: 10px 18px;
+                border-radius: 0 0 20px 4px; /* Follow bubble shape */
             }
+            .sources-footer span { font-weight: 500; letter-spacing: 0.3px; text-transform: uppercase; font-size: 10px; }
             .sources-footer a {
+                color: var(--accent-color);
+                font-weight: 600;
+                text-decoration: none;
+                transition: color 0.2s;
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
-                max-width: 100%;
-                display: block; /* Required for ellipsis to work */
-                color: var(--text-muted);
-                text-decoration: none;
+                max-width: 140px;
             }
             .sources-footer a:hover {
                 text-decoration: underline;
                 color: var(--primary-solid);
             }
 
-            /* Interactive Link Cards */
+            /* Interactive Link Cards - PREMIUM GENERIC STYLE */
+            .card-list {
+                list-style: none;
+                padding: 0;
+                margin: 16px 0;
+                display: flex;
+                flex-direction: column;
+                gap: 16px; /* More separation between cards */
+            }
+
             .interactive-card {
                 background: #ffffff;
-                border: 1px solid var(--border-light);
-                border-radius: 12px;
-                padding: 14px;
-                margin: 10px 0;
-                cursor: pointer;
-                transition: all 0.2s ease;
-                list-style: none;
-                margin-left: -20px;
-                display: block;
-                box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+                border: 1px solid #e5e7eb; /* Subtle neutral border */
+                border-radius: 12px; /* Clean modern radius */
+                padding: 0;
+                margin: 0;
+                cursor: default;
+                transition: transform 0.2s ease, box-shadow 0.2s ease;
+                display: flex;
+                flex-direction: column;
+                box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+                overflow: hidden; /* Clips the header background */
             }
+            
             .interactive-card:hover {
-                border-color: var(--accent-color);
-                background: #ffffff;
-                box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+                box-shadow: 0 10px 20px -5px rgba(0, 0, 0, 0.1);
                 transform: translateY(-2px);
+                border-color: #d1d5db;
             }
+            
+            /* The Main Link (Header of the card) */
+            /* The Main Link (Header of the card) */
+            .interactive-card > a,
+            .interactive-card > .card-header {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 16px 20px;
+                background: #f9fafb; /* Distinct Header Background */
+                color: var(--text-main);
+                text-decoration: none;
+                font-weight: 700;
+                font-size: 1.05em;
+                border-bottom: 1px solid #e5e7eb;
+                transition: background 0.2s;
+            }
+            .interactive-card > a { cursor: pointer; }
+            .interactive-card > .card-header { cursor: default; }
+
+            .interactive-card > a:hover {
+                background: #f3f4f6; /* Slight darken on hover */
+                color: var(--primary-solid); /* Brand color highlight */
+                text-decoration: none; /* Prevent underlining the arrow */
+            }
+            .interactive-card > a:hover span {
+                text-decoration: underline; /* Only underline the title text */
+            }
+
+            .interactive-card > a::after {
+                content: "→";
+                font-size: 18px;
+                color: var(--text-muted);
+                transition: all 0.2s;
+            }
+            .interactive-card > a:hover::after {
+                transform: translateX(4px);
+                color: var(--accent-color);
+                text-decoration: none; /* Triple check */
+            }
+            
+            /* Nested Content (e.g. Service Times list) */
+            .interactive-card .card-body {
+                padding: 16px 20px;
+                background: #ffffff;
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+                color: #4b5563; /* Gray 600 */
+                font-size: 0.95em;
+                line-height: 1.5;
+            }
+
+            /* Reset nested lists to assume they are inside card-body */
+            .interactive-card ul {
+                list-style: none !important;
+                padding: 0;
+                margin: 0;
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+            }
+
+            .interactive-card li {
+                padding: 0;
+                border: none;
+                display: flex;
+                flex-direction: column; /* Allow multi-line alignment */
+                align-items: flex-start;
+            }
+            
+            /* Custom generic bullet/icon replacement */
+            .interactive-card li::before {
+                content: ""; /* Remove dot */
+                display: none;
+            }
+
+            /* Strong text in details (The Label) */
             .interactive-card strong {
-                display: block;
                 color: var(--primary-solid);
-                margin-bottom: 4px;
+                font-weight: 600;
+                min-width: 80px; /* Align values if labels are short */
+                display: inline-block;
             }
+            
+            /* ... (Chips and rest of CSS) ... */
+            
+            /* ... */
+
 
             /* Chips */
             .chips-container {
@@ -568,9 +716,13 @@ class ChurchChatbot extends HTMLElement {
             const sources = data.sources || []; // Array of URLs
 
             // Parse Markdown
+            // Parse Markdown
             let formattedResponse = rawResponse;
             if (window.marked) {
                 formattedResponse = window.marked.parse(rawResponse);
+                // Safe way to force new tab for links (prevents 'refused to connect' inside iframe)
+                formattedResponse = formattedResponse.replace(/<a /g, '<a target="_blank" rel="noopener noreferrer" ');
+                formattedResponse = this.postProcessHtml(formattedResponse);
             }
 
             // Remove Loading
@@ -596,7 +748,7 @@ class ChurchChatbot extends HTMLElement {
                         ${sourcesHtml}
                     </div>
                 </div>`);
-            
+
             this.chatHistory.push({ role: 'assistant', content: rawResponse });
             this.scrollToBottom();
 
@@ -614,6 +766,100 @@ class ChurchChatbot extends HTMLElement {
                 </div>`);
             this.scrollToBottom();
         }
+    }
+
+    /**
+     * Transforms standard HTML lists containing links into styled interactive cards.
+     */
+    postProcessHtml(html) {
+        const div = document.createElement('div');
+        div.innerHTML = html;
+
+        // Process lists into cards
+        const uls = div.querySelectorAll('ul');
+        uls.forEach(ul => {
+            const items = Array.from(ul.children).filter(el => el.tagName === 'LI');
+            if (items.length === 0) return;
+
+            // Heuristic: Is this a "Card List"?
+            const firstLink = items[0].querySelector('a');
+            const firstStrong = items[0].querySelector('strong, b');
+
+            if ((!firstLink || firstLink.closest('ul') !== ul) &&
+                (!firstStrong || firstStrong.closest('ul') !== ul)) {
+                return;
+            }
+
+            ul.classList.add('card-list');
+            items.forEach(li => {
+                li.classList.add('interactive-card');
+
+                // Identify Header (Link or Strong)
+                let header = li.querySelector('a');
+                if (!header || header.closest('ul') !== ul) {
+                    const strong = li.querySelector(':scope > strong, :scope > b');
+                    if (strong) {
+                        header = document.createElement('div');
+                        header.className = 'card-header';
+                        header.innerHTML = `<span>${strong.innerHTML.replace(':', '')}</span>`;
+                        strong.remove();
+                        li.prepend(header);
+                    }
+                } else if (header.parentNode !== li) {
+                    li.prepend(header); // Ensure link is top-level
+                }
+
+                if (header) {
+                    // Styled Header Content
+                    if (header.tagName === 'A') {
+                        const parts = header.innerText.split(':');
+                        if (parts.length > 1) {
+                            header.innerHTML = `<span><strong>${parts[0]}</strong>${parts.slice(1).join(':')}</span>`;
+                        }
+                    }
+
+                    // Wrap Body Content
+                    const body = document.createElement('div');
+                    body.className = 'card-body';
+
+                    // Move remaining children to body
+                    while (li.childNodes.length > 1) {
+                        const child = li.childNodes[1]; // Index 1 because 0 is header
+                        if (child.nodeName === 'BR') child.remove(); // Cleanup BRs immediately
+                        else body.appendChild(child);
+                    }
+
+                    // Cleanup Empty Text/P Nodes in Body
+                    Array.from(body.childNodes).forEach(node => {
+                        if ((node.nodeName === 'P' && !node.innerText.trim()) ||
+                            (node.nodeType === 3 && !node.nodeValue.trim())) {
+                            node.remove();
+                        } else if (node.nodeName === 'P' || node.nodeType === 3) {
+                            // CSS cleanup for text
+                            if (node.style) { node.style.margin = '0'; node.style.marginBottom = '6px'; }
+                        }
+                    });
+
+                    li.appendChild(body);
+
+                    // Format Inner Lists (Service Times)
+                    const innerUl = body.querySelector('ul');
+                    if (innerUl) {
+                        innerUl.style.gap = '10px';
+                        innerUl.querySelectorAll('li').forEach(item => {
+                            const [label, ...rest] = item.innerText.split(':');
+                            if (rest.length > 0) {
+                                item.innerHTML = `<strong>${label}:</strong> ${rest.join(':').trim()}`;
+                            }
+                            item.style.marginBottom = '6px';
+                        });
+                    }
+                }
+            });
+        });
+
+        // Loop for links removed: Handled by Global Interceptor
+        return div.innerHTML;
     }
 }
 
