@@ -1,3 +1,5 @@
+console.log("🚀 CHURCH CHATBOT v12 (Clickable Cards) LOADED 🚀");
+
 const DEFAULT_LOGO = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width: 60%; height: 60%; color: white;">
   <circle cx="12" cy="12" r="10"/>
   <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
@@ -54,10 +56,29 @@ class ChurchChatbot extends HTMLElement {
 
         // GLOBAL CLICK INTERCEPTOR (Fix for "Refused to connect")
         // This catches ALL link clicks inside the shadow DOM and forces them to new tab.
+        // GLOBAL CLICK INTERCEPTOR
         this.shadowRoot.addEventListener('click', (e) => {
-            const link = e.target.closest('a');
-            if (link) {
-                const href = link.getAttribute('href');
+            // A. Check for "Card Click" (User clicked box, not specific link)
+            const card = e.target.closest('.interactive-card.has-link');
+            const clickedLink = e.target.closest('a');
+
+            if (card && !clickedLink) {
+                // User clicked the card background -> Find the main link
+                const mainLink = card.querySelector('a');
+                if (mainLink) {
+                    const href = mainLink.getAttribute('href');
+                    if (href) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        window.open(href, '_blank', 'noopener,noreferrer');
+                        return;
+                    }
+                }
+            }
+
+            // B. Check for "Link Click" (Standard or inside card)
+            if (clickedLink) {
+                const href = clickedLink.getAttribute('href');
                 if (href && (href.startsWith('http') || href.startsWith('//'))) {
                     e.preventDefault();
                     e.stopPropagation();
@@ -360,6 +381,14 @@ class ChurchChatbot extends HTMLElement {
                 border-color: #d1d5db;
             }
             
+            /* Make fully clickable cards look interactive */
+            .interactive-card.has-link {
+                cursor: pointer;
+            }
+            .interactive-card.has-link:hover {
+                border-color: var(--accent-color); /* Green Border on Hover */
+            }
+            
             /* The Main Link (Header of the card) */
             /* The Main Link (Header of the card) */
             .interactive-card > a,
@@ -367,49 +396,50 @@ class ChurchChatbot extends HTMLElement {
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
-                padding: 16px 20px;
-                background: #f9fafb; /* Distinct Header Background */
-                color: var(--text-main);
+                padding: 18px 22px; 
+                background: var(--primary-solid); /* Solid Green Header */
+                color: white; /* White Text */
                 text-decoration: none;
                 font-weight: 700;
                 font-size: 1.05em;
+                width: 100%; 
+                box-sizing: border-box; 
                 border-bottom: 1px solid #e5e7eb;
-                transition: background 0.2s;
+                transition: opacity 0.2s;
             }
             .interactive-card > a { cursor: pointer; }
             .interactive-card > .card-header { cursor: default; }
 
             .interactive-card > a:hover {
-                background: #f3f4f6; /* Slight darken on hover */
-                color: var(--primary-solid); /* Brand color highlight */
-                text-decoration: none; /* Prevent underlining the arrow */
+                background: var(--primary-solid); 
+                opacity: 0.9; /* Slight feedback */
+                color: white; 
             }
             .interactive-card > a:hover span {
-                text-decoration: underline; /* Only underline the title text */
+                text-decoration: underline; 
             }
 
             .interactive-card > a::after {
                 content: "→";
                 font-size: 18px;
-                color: var(--text-muted);
+                color: rgba(255, 255, 255, 0.8); /* White Arrow */
                 transition: all 0.2s;
             }
             .interactive-card > a:hover::after {
                 transform: translateX(4px);
-                color: var(--accent-color);
-                text-decoration: none; /* Triple check */
+                opacity: 1;
             }
             
             /* Nested Content (e.g. Service Times list) */
             .interactive-card .card-body {
-                padding: 16px 20px;
-                background: #ffffff;
+                padding: 20px 22px; 
+                background: #ffffff; /* White Box */
                 display: flex;
                 flex-direction: column;
-                gap: 10px;
-                color: #4b5563; /* Gray 600 */
+                gap: 12px;
+                color: #374151; 
                 font-size: 0.95em;
-                line-height: 1.5;
+                line-height: 1.6;
             }
 
             /* Reset nested lists to assume they are inside card-body */
@@ -427,7 +457,7 @@ class ChurchChatbot extends HTMLElement {
                 border: none;
                 display: flex;
                 flex-direction: column; /* Allow multi-line alignment */
-                align-items: flex-start;
+                align-items: stretch; /* FORCE FULL WIDTH CHILDREN */
             }
             
             /* Custom generic bullet/icon replacement */
@@ -710,7 +740,14 @@ class ChurchChatbot extends HTMLElement {
                 })
             });
 
-            if (!response.ok) throw new Error("API Error");
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                console.error("Server Error:", errorData);
+                // Throw specific error if available
+                if (errorData.error) throw new Error(errorData.error);
+                throw new Error(`Server returned status: ${response.status}`);
+            }
+
             const data = await response.json();
             const rawResponse = data.response;
             const sources = data.sources || []; // Array of URLs
@@ -757,11 +794,18 @@ class ChurchChatbot extends HTMLElement {
             const loadingElem = this.shadowRoot.getElementById(loadingId);
             if (loadingElem) loadingElem.remove();
 
+            let cleanError = "I'm sorry, I'm having trouble connecting to the server right now.";
+
+            // If internal error exposed (e.g. from Fallback App)
+            if (error.message && (error.message.includes("Application Failed") || error.message.includes("API_KEY"))) {
+                cleanError = `⚠️ **Server Error:** ${error.message}`;
+            }
+
             this.historyDiv.insertAdjacentHTML('beforeend', `
                 <div class="msg-container bot-container">
                     <div class="bot-avatar-sml" style="background: #ef4444;">!</div>
                     <div class="msg bot-msg">
-                        I'm sorry, I'm having trouble connecting to the server right now.
+                        ${cleanError}
                     </div>
                 </div>`);
             this.scrollToBottom();
@@ -789,13 +833,110 @@ class ChurchChatbot extends HTMLElement {
                 (!firstStrong || firstStrong.closest('ul') !== ul)) {
                 return;
             }
-
             ul.classList.add('card-list');
             items.forEach(li => {
                 li.classList.add('interactive-card');
 
-                // Identify Header (Link or Strong)
-                let header = li.querySelector('a');
+                // HEURISTIC: Parent Card (Expandable) vs Leaf Card (Info)
+                // Parent Card has a LINK in the title (e.g. Campus Name).
+                // Leaf Card has no link (e.g. Service Time), just bold text.
+
+                // HEURISTIC: Default Leaf if no sub-list. Force Leaf if Time Pattern.
+                const hasSubList = li.querySelector('ul');
+                let isLeaf = !hasSubList;
+                const textContent = li.textContent;
+                const timePattern = /\b(Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Daily|Weekend|Service|Time|AM|PM)\b/i;
+                if (hasSubList && timePattern.test(textContent)) isLeaf = true;
+
+                // CASE 1: LEAF CARD (Service Times, Info) -> EVERYTHING is Header
+                if (isLeaf) {
+                    // Flatten accidental sub-lists (e.g. LLM nested list for times)
+                    const subLists = li.querySelectorAll('ul');
+                    subLists.forEach(sub => {
+                        const items = Array.from(sub.querySelectorAll('li')).map(i => i.textContent.trim());
+                        if (items.length > 0) {
+                            const text = items.join(', '); // Join times with comma
+                            const textNode = document.createTextNode(` ${text}`);
+                            sub.parentNode.insertBefore(textNode, sub);
+                        }
+                        sub.remove();
+                    });
+
+                    // Remove stray colons at start of text nodes (cleanup)
+                    Array.from(li.childNodes).forEach(node => {
+                        if (node.nodeType === 3 && node.nodeValue.trim().startsWith(':')) {
+                            node.nodeValue = node.nodeValue.replace(/^\s*:\s*/, ' ');
+                        }
+                    });
+
+                    // --- LEAF CARD FORMATTING (Unified Style) ---
+
+                    // Check if there is a link to promote to a Header
+                    const link = li.querySelector('a');
+
+                    if (link) {
+                        // 1. Create Header (Green)
+                        const headerDiv = document.createElement('div');
+                        headerDiv.className = 'card-header';
+                        headerDiv.appendChild(link); // Move link to header
+
+                        // 2. Create Body (White) using remaining content
+                        const bodyDiv = document.createElement('div');
+                        bodyDiv.className = 'card-body';
+                        bodyDiv.style.padding = "20px 22px";
+                        bodyDiv.style.fontWeight = "500";
+                        bodyDiv.style.display = "block";
+                        bodyDiv.style.whiteSpace = "normal"; // Allow wrapping
+
+                        // Capture formatting before regex
+                        let htmlContent = li.innerHTML;
+
+                        // Clean up leading separators ( - or : ) since link is gone
+                        // This uses a regex on the raw HTML, which might be tricky if the link was first.
+                        // Better approach: Move nodes to body first, then clean text nodes.
+
+                        while (li.firstChild) {
+                            bodyDiv.appendChild(li.firstChild);
+                        }
+
+                        // Clean leading text node in body
+                        if (bodyDiv.firstChild && bodyDiv.firstChild.nodeType === 3) {
+                            bodyDiv.firstChild.nodeValue = bodyDiv.firstChild.nodeValue.replace(/^[\s:-]+/, '');
+                        }
+
+                        // Apply Day Bolding directly to body content
+                        const dayRegex = /\b(Sundays?|Mondays?|Tuesdays?|Wednesdays?|Thursdays?|Fridays?|Saturdays?|Daily|Weekends?)\b/gi;
+                        bodyDiv.innerHTML = bodyDiv.innerHTML.replace(dayRegex, '<span style="font-weight: 800; color: #111827;">$1</span>');
+
+                        // Reassemble LI
+                        li.appendChild(headerDiv);
+                        if (bodyDiv.innerText.trim().length > 0) {
+                            li.appendChild(bodyDiv);
+                        }
+                    } else {
+                        // NO LINK -> Pure Info Card (White Box)
+                        const header = document.createElement('div');
+                        header.className = 'card-body';
+                        header.style.padding = "20px 22px";
+                        header.style.fontWeight = "500";
+                        header.style.display = "block";
+                        header.style.whiteSpace = "normal";
+
+                        let htmlContent = li.innerHTML;
+                        const dayRegex = /\b(Sundays?|Mondays?|Tuesdays?|Wednesdays?|Thursdays?|Fridays?|Saturdays?|Daily|Weekends?)\b/gi;
+                        htmlContent = htmlContent.replace(dayRegex, '<span style="font-weight: 800; color: #111827;">$1</span>');
+
+                        header.innerHTML = htmlContent;
+                        li.innerHTML = '';
+                        li.appendChild(header);
+                    }
+                    return; // Done
+                }
+
+                // CASE 2: PARENT CARD (Campus) -> Split Header & Body
+                let header = li.querySelector('a'); // Re-select for clarity
+
+                // (Existing Logic for Parent Headers)
                 if (!header || header.closest('ul') !== ul) {
                     const strong = li.querySelector(':scope > strong, :scope > b');
                     if (strong) {
@@ -804,9 +945,11 @@ class ChurchChatbot extends HTMLElement {
                         header.innerHTML = `<span>${strong.innerHTML.replace(':', '')}</span>`;
                         strong.remove();
                         li.prepend(header);
+                    } else if (header && header.parentNode !== li) {
+                        li.prepend(header);
                     }
                 } else if (header.parentNode !== li) {
-                    li.prepend(header); // Ensure link is top-level
+                    li.prepend(header);
                 }
 
                 if (header) {
@@ -822,12 +965,13 @@ class ChurchChatbot extends HTMLElement {
                     const body = document.createElement('div');
                     body.className = 'card-body';
 
-                    // Move remaining children to body
+                    // Move remaining children (including the sub-UL) to body
                     while (li.childNodes.length > 1) {
-                        const child = li.childNodes[1]; // Index 1 because 0 is header
-                        if (child.nodeName === 'BR') child.remove(); // Cleanup BRs immediately
+                        const child = li.childNodes[1];
+                        if (child.nodeName === 'BR') child.remove();
                         else body.appendChild(child);
                     }
+                    li.appendChild(body);
 
                     // Cleanup Empty Text/P Nodes in Body
                     Array.from(body.childNodes).forEach(node => {
@@ -839,21 +983,11 @@ class ChurchChatbot extends HTMLElement {
                             if (node.style) { node.style.margin = '0'; node.style.marginBottom = '6px'; }
                         }
                     });
+                }
 
-                    li.appendChild(body);
-
-                    // Format Inner Lists (Service Times)
-                    const innerUl = body.querySelector('ul');
-                    if (innerUl) {
-                        innerUl.style.gap = '10px';
-                        innerUl.querySelectorAll('li').forEach(item => {
-                            const [label, ...rest] = item.innerText.split(':');
-                            if (rest.length > 0) {
-                                item.innerHTML = `<strong>${label}:</strong> ${rest.join(':').trim()}`;
-                            }
-                            item.style.marginBottom = '6px';
-                        });
-                    }
+                // Final Check: Does this card have a link? If so, make it clickable.
+                if (li.querySelector('a')) {
+                    li.classList.add('has-link');
                 }
             });
         });

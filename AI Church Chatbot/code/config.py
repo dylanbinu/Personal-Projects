@@ -25,7 +25,7 @@ if not os.path.exists(DEFAULT_DATA_FILE):
     DEFAULT_DATA_FILE = os.path.join(PROJECT_ROOT, "scraped_data.jsonl")
 
 # --- MODEL CONFIGURATION ---
-EMBEDDING_MODEL_NAME = "sentence-transformers/all-mpnet-base-v2"
+EMBEDDING_MODEL_NAME = "text-embedding-3-small"
 LLM_MODEL_NAME = "gpt-4o-mini"
 LLM_TEMPERATURE = 0.3
 
