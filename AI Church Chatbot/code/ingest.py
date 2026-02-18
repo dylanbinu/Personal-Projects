@@ -1,9 +1,13 @@
 import os
 import sys
 import json
+import shutil
+import warnings
+import argparse
 
 from langchain_chroma import Chroma
-from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_openai import OpenAIEmbeddings
+from langchain_community.document_loaders import JSONLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 
@@ -11,7 +15,7 @@ import config
 
 def main():
     parser = argparse.ArgumentParser(description="Ingest Church Data")
-    parser.add_argument("--church_id", type=str, help="Unique ID for the church (e.g., 'my_church')")
+    parser.add_argument("--church_id", type=str, default="heritage", help="Unique ID for the church (default: 'heritage')")
     parser.add_argument("--input_file", type=str, default="scraped_data.jsonl", help="Input JSONL file")
     parser.add_argument("--reset", action="store_true", help="Wipe the entire database before ingesting")
     
@@ -38,7 +42,7 @@ def main():
         
     # --- LOAD MODEL ONCE (Optimization) ---
     print(f"   [INFO] Loading Embedding Model ({config.EMBEDDING_MODEL_NAME})...")
-    embedding_model = HuggingFaceEmbeddings(model_name=config.EMBEDDING_MODEL_NAME)
+    embedding_model = OpenAIEmbeddings(model=config.EMBEDDING_MODEL_NAME)
 
     # PRE-CLEANUP: If we are appending for a specific church, we must delete OLD data
     # Now we reuse the already loaded `embedding_model`
@@ -114,7 +118,7 @@ def main():
         Chroma.from_documents(
             documents=batch,
             embedding=embedding_model,
-            persist_directory=CHROMA_PATH
+            persist_directory=config.CHROMA_PATH
         )
         print(f"   Processed batch {i//BATCH_SIZE + 1}...")
 
